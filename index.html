@@ -1,196 +1,99 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ESP32 控制面板</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
-    .status-led {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      display: inline-block;
+    body {
+      font-family: sans-serif;
+      margin: 20px;
     }
-    .led-on { background-color: red; }
-    .led-off { background-color: green; }
+    .tab {
+      display: none;
+    }
+    .tab.active {
+      display: block;
+    }
+    .tabs button {
+      margin-right: 10px;
+    }
+    .io-block {
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
   </style>
 </head>
 <body>
-<div class="container mt-4">
-  <ul class="nav nav-tabs" id="mainTab" role="tablist">
-    <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">設定</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="control-tab" data-bs-toggle="tab" data-bs-target="#control" type="button" role="tab">控制</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="logic-tab" data-bs-toggle="tab" data-bs-target="#logic" type="button" role="tab">邏輯</button>
-    </li>
-  </ul>
-  <div class="tab-content mt-3">
-    <!-- 設定頁面 -->
-    <div class="tab-pane fade show active" id="settings" role="tabpanel">
-      <form id="settingsForm">
-        <table class="table table-bordered">
-          <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>控制類型</th><th>單位</th></tr></thead>
-          <tbody id="settingsTableBody"></tbody>
-        </table>
-        <button type="submit" class="btn btn-primary">儲存設定</button>
-      </form>
-    </div>
-    <!-- 控制頁面 -->
-    <div class="tab-pane fade" id="control" role="tabpanel">
-      <table class="table table-bordered">
-        <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態/控制</th><th>控制模式</th><th>排程</th></tr></thead>
-        <tbody id="controlTableBody"></tbody>
-      </table>
-    </div>
-    <!-- 邏輯頁面 -->
-    <div class="tab-pane fade" id="logic" role="tabpanel">
-      <form id="logicForm">
-        <div class="mb-3">
-          <label for="logicRule" class="form-label">邏輯條件 (範例: 如果 GPIO1 = HIGH，則啟動 GPIO5)</label>
-          <textarea id="logicRule" class="form-control" rows="5"></textarea>
-        </div>
-        <button type="submit" class="btn btn-success">儲存邏輯</button>
-      </form>
-    </div>
+  <h2>ESP32 自動控制系統</h2>
+  <div class="tabs">
+    <button onclick="showTab('settings')">設定</button>
+    <button onclick="showTab('control')">控制</button>
+    <button onclick="showTab('logic')">邏輯</button>
   </div>
-</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.0/mqttws31.min.js"></script>
-<script>
-  // 初始化 MQTT 客戶端
-  const clientID = "webClient_" + Math.floor(Math.random() * 10000);
-  const client = new Paho.MQTT.Client("broker.mqttgo.io", 8084, clientID);
+  <div id="settings" class="tab active">
+    <h3>GPIO 設定</h3>
+    <div id="settings-content"></div>
+  </div>
 
-  client.connect({
-    onSuccess: function () {
-      console.log("✅ 已連接到 MQTT broker");
-    },
-    useSSL: true
-  });
+  <div id="control" class="tab">
+    <h3>控制面板</h3>
+    <div id="control-content"></div>
+  </div>
 
-  const ioCount = 10;
-  const gpioMap = [12, 14, 27, 26, 25, 33, 32, 4, 5, 18];
+  <div id="logic" class="tab">
+    <h3>邏輯設定</h3>
+    <textarea id="logic-text" rows="5" style="width:100%"></textarea><br />
+    <button onclick="saveLogic()">儲存邏輯</button>
+  </div>
 
-  function renderSettingsTable() {
-    const tbody = document.getElementById('settingsTableBody');
-    tbody.innerHTML = '';
-    for (let i = 0; i < ioCount; i++) {
-      tbody.innerHTML += `
-        <tr>
-          <td>${i + 1}</td>
-          <td>
-            <input type="text" class="form-control" name="gpioName${i}" placeholder="GPIO${gpioMap[i]}">
-          </td>
-          <td>
-            <select class="form-select" name="mode${i}" id="mode${i}" onchange="updateControlFields(${i})">
-              <option value="input">Input</option>
-              <option value="output">Output</option>
-            </select>
-          </td>
-          <td>
-            <select class="form-select" name="controlType${i}" id="controlType${i}">
-              <option value="digital">數位</option>
-              <option value="analog">類比</option>
-            </select>
-          </td>
-          <td>
-            <input type="text" class="form-control" name="unit${i}" id="unit${i}" placeholder="單位">
-          </td>
-        </tr>
-      `;
+  <script>
+    const clientId = 'esp32_webui_' + Math.random().toString(16).substr(2, 8);
+    const host = 'wss://broker.mqttgo.io:8084/mqtt';
+    const topicPrefix = 'esp32/control/';
+
+    const client = mqtt.connect(host, { clientId });
+
+    client.on('connect', () => {
+      console.log('MQTT 已連線');
+      client.subscribe(topicPrefix + '#');
+    });
+
+    client.on('message', (topic, message) => {
+      const payload = JSON.parse(message.toString());
+      if (topic.endsWith('/state')) updateState(payload);
+    });
+
+    function showTab(tabId) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
     }
-  }
 
-  function renderControlTable(ioConfig = []) {
-    const tbody = document.getElementById('controlTableBody');
-    tbody.innerHTML = '';
-    for (let i = 0; i < ioCount; i++) {
-      const mode = ioConfig[i]?.mode || 'input';
-      const type = ioConfig[i]?.type || 'digital';
-      const value = ioConfig[i]?.value || 0;
-      const name = ioConfig[i]?.name || `GPIO${gpioMap[i]}`;
-      const controlMode = ioConfig[i]?.controlMode || 'auto';
-      let statusHTML = '';
-      let modeLabel = controlMode === 'remote' ? '遠端' : '自動';
-      let modeSelector = '';
-
-      if (mode === 'output') {
-        statusHTML = `
-          <button class="btn btn-sm btn-${value ? 'danger' : 'secondary'}">
-            ${value ? '關閉' : '開啟'}
-          </button>`;
-      } else {
-        if (type === 'digital') {
-          statusHTML = `
-            <span class="status-led ${value ? 'led-on' : 'led-off'}"></span>
-          `;
-        } else {
-          const unit = ioConfig[i]?.unit || 'V';
-          statusHTML = `${value} ${unit}`;
-        }
-        modeSelector = `
-          <select class="form-select form-select-sm w-auto" onchange="handleModeChange(${i}, this.value)">
-            <option value="auto" ${controlMode === 'auto' ? 'selected' : ''}>自動</option>
-            <option value="remote" ${controlMode === 'remote' ? 'selected' : ''}>遠端</option>
-          </select>
-        `;
-      }
-
-      tbody.innerHTML += `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${name}</td>
-          <td>${mode.toUpperCase()}</td>
-          <td>${statusHTML}</td>
-          <td>${mode === 'input' ? modeSelector : '—'}</td>
-          <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
-        </tr>
-      `;
+    function updateState(data) {
+      const control = document.getElementById('control-content');
+      control.innerHTML = '';
+      data.forEach((io, index) => {
+        const div = document.createElement('div');
+        div.className = 'io-block';
+        div.innerHTML = `<strong>${io.name} (${io.mode})</strong><br />
+        狀態：${io.value}<br />
+        <button onclick="toggleIO(${index})">切換</button>`;
+        control.appendChild(div);
+      });
     }
-  }
 
-  function updateControlFields(index) {
-    const mode = document.getElementById(`mode${index}`).value;
-    const controlTypeSelect = document.getElementById(`controlType${index}`);
-    const unitInput = document.getElementById(`unit${index}`);
-    const isInput = mode === 'input';
-    controlTypeSelect.disabled = !isInput;
-    unitInput.disabled = !isInput;
-    if (!isInput) {
-      controlTypeSelect.value = '';
-      unitInput.value = '';
+    function toggleIO(index) {
+      client.publish(topicPrefix + 'toggle', JSON.stringify({ index }));
     }
-  }
 
-  function handleModeChange(index, value) {
-    console.log(`GPIO ${index} 模式改為：${value}`);
-    // TODO: 向 ESP32 發送模式變更指令與強制狀態切換（若為 remote）
-  }
-
-  // 發送 MQTT 控制指令
-  function sendCommand(gpioIndex, command) {
-    const topic = `esp32/gpio/${gpioMap[gpioIndex]}`;
-    const message = new Paho.MQTT.Message(command);
-    message.destinationName = topic;
-    client.send(message);
-    console.log(`📤 發送命令: ${command} 到 topic: ${topic}`);
-  }
-
-  // 當使用者點擊開關按鈕時
-  function toggleGPIOState(index, currentState) {
-    const newState = currentState === 'ON' ? 'OFF' : 'ON';
-    sendCommand(index, newState);
-  }
-
-  renderSettingsTable();
-  renderControlTable();
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    function saveLogic() {
+      const logic = document.getElementById('logic-text').value;
+      client.publish(topicPrefix + 'logic', JSON.stringify({ logic }));
+    }
+  </script>
 </body>
 </html>
