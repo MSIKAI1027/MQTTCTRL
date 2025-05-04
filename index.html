@@ -7,60 +7,39 @@
   <title>ESP32 控制面板</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
   <style>
-    .status-led {
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      display: inline-block;
-    }
+    .status-led { width: 20px; height: 20px; border-radius: 50%; display: inline-block; }
     .led-on  { background-color: red;   }
     .led-off { background-color: green; }
   </style>
 </head>
 <body>
   <div class="container mt-4">
-    <ul class="nav nav-tabs" id="mainTab" role="tablist">
-      <li class="nav-item">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#settings">設定</button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#control">控制</button>
-      </li>
-      <li class="nav-item">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#logic">邏輯</button>
-      </li>
+    <ul class="nav nav-tabs">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#settings">設定</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#control">控制</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#logic">邏輯</button></li>
     </ul>
     <div class="tab-content mt-3">
-      <!-- 設定頁 -->
       <div class="tab-pane fade show active" id="settings">
         <form id="settingsForm">
           <table class="table table-bordered">
-            <thead>
-              <tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>控制類型</th><th>單位</th></tr>
-            </thead>
+            <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>控制類型</th><th>單位</th></tr></thead>
             <tbody id="settingsTableBody"></tbody>
           </table>
           <button type="submit" class="btn btn-primary">儲存設定</button>
         </form>
       </div>
-
-      <!-- 控制頁 -->
       <div class="tab-pane fade" id="control">
         <table class="table table-bordered">
-          <thead>
-            <tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態</th><th>操作</th><th>排程</th></tr>
-          </thead>
+          <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態</th><th>操作</th><th>排程</th></tr></thead>
           <tbody id="controlTableBody"></tbody>
         </table>
       </div>
-
-      <!-- 邏輯頁 -->
       <div class="tab-pane fade" id="logic">
         <form id="logicForm">
           <div class="mb-3">
             <label class="form-label">邏輯條件</label>
-            <textarea id="logicRule" class="form-control" rows="5"
-              placeholder="範例: 如果 GPIO1 = HIGH，則啟動 GPIO5"></textarea>
+            <textarea id="logicRule" class="form-control" rows="5" placeholder="範例: 如果 GPIO1 = HIGH，則啟動 GPIO5"></textarea>
           </div>
           <button type="submit" class="btn btn-success">儲存邏輯</button>
         </form>
@@ -71,40 +50,28 @@
   <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
   <script>
-    const ioCount  = 10;
-    const gpioMap  = [12,14,27,26,25,33,32,4,5,18];
-    const broker   = "broker.mqttgo.io";
-    const client   = mqtt.connect(`wss://${broker}:8084/mqtt`);
+    const ioCount = 10;
+    const gpioMap = [12,14,27,26,25,33,32,4,5,18];
+    const broker  = 'broker.mqttgo.io';
+    const client  = mqtt.connect(`wss://${broker}:8084/mqtt`);
 
     client.on('connect', () => {
       console.log('MQTT 連線成功');
       client.subscribe('esp32/status');
+      client.subscribe('esp32/config/ack');
     });
 
     client.on('message', (topic, message) => {
+      console.log('收到主題', topic, '訊息', message.toString());
       if (topic === 'esp32/status') {
-        const { io } = JSON.parse(message.toString());
+        const { io } = JSON.parse(message);
         renderControlTable(io);
       }
-    });
-
-    // 當設定表單提交時，攔截預設行為並發送設定
-    document.getElementById('settingsForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      const configs = [];
-      for (let i = 0; i < ioCount; i++) {
-        const name = this[`gpioName${i}`].value || `GPIO${gpioMap[i]}`;
-        const mode = this[`mode${i}`].value;
-        const type = this[`controlType${i}`].value;
-        const unit = this[`unit${i}`].value;
-        configs.push({ pin: gpioMap[i], name, mode, type, unit });
+      if (topic === 'esp32/config/ack') {
+        alert('ESP32 已套用設定');
       }
-      // 發送到 esp32/config 主題
-      client.publish('esp32/config', JSON.stringify({ configs }));
-      alert('設定已發送！');
     });
 
-    // Render 設定表
     function renderSettingsTable() {
       const tbody = document.getElementById('settingsTableBody');
       tbody.innerHTML = '';
@@ -112,62 +79,96 @@
         tbody.innerHTML += `
           <tr>
             <td>${i+1}</td>
-            <td><input type="text" class="form-control" name="gpioName${i}" placeholder="GPIO${gpioMap[i]}"></td>
-            <td>
-              <select class="form-select" name="mode${i}" id="mode${i}" onchange="updateControlFields(${i})">
-                <option value="input">Input</option>
-                <option value="output">Output</option>
-              </select>
-            </td>
-            <td>
-              <select class="form-select" name="controlType${i}" id="controlType${i}">
-                <option value="digital">數位</option>
-                <option value="analog">類比</option>
-              </select>
-            </td>
-            <td><input type="text" class="form-control" name="unit${i}" id="unit${i}" placeholder="單位"></td>
+            <td><input type="text" class="form-control" name="name${i}" placeholder="GPIO${gpioMap[i]}"></td>
+            <td><select class="form-select" name="mode${i}"><option value="input">Input</option><option value="output">Output</option></select></td>
+            <td><select class="form-select" name="type${i}"><option value="digital">數位</option><option value="analog">類比</option></select></td>
+            <td><input type="text" class="form-control" name="unit${i}" placeholder="單位"></td>
           </tr>`;
       }
     }
 
-    // Render 控制表
+    document.getElementById('settingsForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const configs = [];
+      for (let i = 0; i < ioCount; i++) {
+        configs.push({
+          pin: gpioMap[i],
+          name: fd.get(`name${i}`) || `GPIO${gpioMap[i]}`,
+          mode: fd.get(`mode${i}`),
+          type: fd.get(`type${i}`),
+          unit: fd.get(`unit${i}`) || ''
+        });
+      }
+      const payload = { configs };
+      console.log('發送設定:', payload);
+      client.publish('esp32/config', JSON.stringify(payload));
+    });
+
     function renderControlTable(ioList = []) {
-      const tbody = document.getElementById('controlTableBody');
-      tbody.innerHTML = '';
+      const tbody = document.getElementById('controlTableBody'); tbody.innerHTML = '';
       ioList.forEach(io => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${io.pin}</td>
-          <td>${io.name}</td>
-          <td>${io.mode}</td>
+          <td>${io.pin}</td><td>${io.name}</td><td>${io.mode}</td>
           <td><span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span></td>
-          <td>${io.mode==='output'
-              ? `<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin},1)">ON</button>
-                 <button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin},0)">OFF</button>`
-              : '-'}</td>
+          <td>${io.mode==='output'?`<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin},1)">ON</button><button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin},0)">OFF</button>`:'-'}</td>
           <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
         `;
         tbody.appendChild(tr);
       });
     }
 
-    // 發送控制指令
     function sendCmd(pin, state) {
+      console.log('發送控制:', pin, state);
       client.publish('esp32/control', JSON.stringify({ pin, state }));
-    }
-
-    // 根據模式啟用/停用設定欄位
-    function updateControlFields(i) {
-      const mode = document.getElementById(`mode${i}`).value;
-      const ctl  = document.getElementById(`controlType${i}`);
-      const unit = document.getElementById(`unit${i}`);
-      const isInput = mode === 'input';
-      ctl.disabled  = !isInput;
-      unit.disabled = !isInput;
-      if (!isInput) { ctl.value=''; unit.value=''; }
     }
 
     renderSettingsTable();
   </script>
 </body>
 </html>
+
+// esp32_control.ino
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <EEPROM.h>
+#include <ArduinoJson.h>
+
+const char* ssid       = "Wokwi-GUEST";
+const char* password   = "";
+const char* mqtt_server= "broker.mqttgo.io";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+#define IO_COUNT 10
+int gpioList[IO_COUNT] = {12,14,27,26,25,33,32,4,5,18};
+
+struct IOConfig { int pin; char name[16]; char mode[8]; char type[8]; char unit[8]; int value; int controlMode; } ioConfig[IO_COUNT];
+
+void loadConfig(){ EEPROM.begin(1024); EEPROM.get(0, ioConfig); EEPROM.end(); }
+void saveConfig(){ EEPROM.begin(1024); EEPROM.put(0, ioConfig); EEPROM.commit(); EEPROM.end(); }
+
+void sendStatus(){ StaticJsonDocument<512> doc; auto arr=doc.createNestedArray("io");
+  for(int i=0;i<IO_COUNT;i++){ auto o=arr.createNestedObject(); o["pin"]=ioConfig[i].pin; o["name"]=ioConfig[i].name; o["mode"]=ioConfig[i].mode; o["type"]=ioConfig[i].type; o["unit"]=ioConfig[i].unit; o["value"]=digitalRead(ioConfig[i].pin); o["controlMode"]=ioConfig[i].controlMode; }
+  char buf[512]; serializeJson(doc,buf); client.publish("esp32/status",buf);
+}
+
+void handleConfig(JsonDocument& doc){ auto arr=doc["configs"].as<JsonArray>();
+  for(int i=0;i<IO_COUNT && i<arr.size();i++){ auto o=arr[i]; strcpy(ioConfig[i].name,o["name"]); strcpy(ioConfig[i].mode,o["mode"]); strcpy(ioConfig[i].type,o["type"]); strcpy(ioConfig[i].unit,o["unit"]); pinMode(ioConfig[i].pin, strcmp(ioConfig[i].mode,"output")==0?OUTPUT:INPUT); }
+  saveConfig(); sendStatus(); client.publish("esp32/config/ack","ok"); }
+
+void callback(char* topic, byte* payload, unsigned int len){ StaticJsonDocument<512> doc; deserializeJson(doc,payload,len);
+  String t=topic;
+  if(t=="esp32/control"){ int pin=doc["pin"], state=doc["state"]; for(int i=0;i<IO_COUNT;i++) if(ioConfig[i].pin==pin && strcmp(ioConfig[i].mode,"output")==0){ digitalWrite(pin,state); ioConfig[i].value=state; sendStatus(); break;} }
+  if(t=="esp32/config"){ handleConfig(doc); }
+}
+
+void setup(){ Serial.begin(115200); loadConfig(); for(int i=0;i<IO_COUNT;i++){ ioConfig[i].pin=gpioList[i]; snprintf(ioConfig[i].name,16,"IO%d",i+1); strcpy(ioConfig[i].mode,(i%2)?"input":"output"); strcpy(ioConfig[i].type,"digital"); strcpy(ioConfig[i].unit,""); ioConfig[i].value=0; ioConfig[i].controlMode=0; pinMode(ioConfig[i].pin, strcmp(ioConfig[i].mode,"output")==0?OUTPUT:INPUT);}  
+  WiFi.begin(ssid,password); while(WiFi.status()!=WL_CONNECTED){delay(500);Serial.print(".");} Serial.println("WiFi connected");
+  client.setServer(mqtt_server,1883); client.setCallback(callback);
+  while(!client.connected()){ if(client.connect("ESP32Client")){ client.subscribe("esp32/status"); client.subscribe("esp32/control"); client.subscribe("esp32/config"); } else { delay(1000);} }
+  sendStatus(); }
+
+void loop(){ client.loop(); }
