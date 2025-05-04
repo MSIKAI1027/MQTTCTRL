@@ -1,14 +1,13 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ESP32 控制面板</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
   <style>
     .status-led { width: 20px; height: 20px; border-radius: 50%; display: inline-block; }
-    .led-on  { background-color: red;   }
+    .led-on  { background-color: red; }
     .led-off { background-color: green; }
   </style>
 </head>
@@ -19,6 +18,7 @@
       <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#control">控制</button></li>
       <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#logic">邏輯</button></li>
     </ul>
+
     <div class="tab-content mt-3">
       <div class="tab-pane fade show active" id="settings">
         <form id="settingsForm">
@@ -29,12 +29,14 @@
           <button type="submit" class="btn btn-primary">儲存設定</button>
         </form>
       </div>
+
       <div class="tab-pane fade" id="control">
         <table class="table table-bordered">
           <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態</th><th>操作</th><th>排程</th></tr></thead>
           <tbody id="controlTableBody"></tbody>
         </table>
       </div>
+
       <div class="tab-pane fade" id="logic">
         <form id="logicForm">
           <div class="mb-3">
@@ -47,18 +49,21 @@
     </div>
   </div>
 
+  <!-- JS & MQTT -->
   <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
   <script>
     const ioCount = 10;
     const gpioMap = [12,14,27,26,25,33,32,4,5,18];
-    const broker  = 'broker.mqttgo.io';
-    const client  = mqtt.connect(`wss://${broker}:8084/mqtt`);
+    const broker = 'broker.mqttgo.io';
+    const client = mqtt.connect(`wss://${broker}:8084/mqtt`);
 
     client.on('connect', () => {
       console.log('MQTT 連線成功');
       client.subscribe('esp32/status');
       client.subscribe('esp32/config/ack');
+      // 要求 ESP32 傳回狀態（例如開機時主動回傳）
+      client.publish('esp32/status/request', 'get');
     });
 
     client.on('message', (topic, message) => {
@@ -78,10 +83,20 @@
       for (let i = 0; i < ioCount; i++) {
         tbody.innerHTML += `
           <tr>
-            <td>${i+1}</td>
+            <td>${i + 1}</td>
             <td><input type="text" class="form-control" name="name${i}" placeholder="GPIO${gpioMap[i]}"></td>
-            <td><select class="form-select" name="mode${i}"><option value="input">Input</option><option value="output">Output</option></select></td>
-            <td><select class="form-select" name="type${i}"><option value="digital">數位</option><option value="analog">類比</option></select></td>
+            <td>
+              <select class="form-select" name="mode${i}">
+                <option value="input">Input</option>
+                <option value="output">Output</option>
+              </select>
+            </td>
+            <td>
+              <select class="form-select" name="type${i}">
+                <option value="digital">數位</option>
+                <option value="analog">類比</option>
+              </select>
+            </td>
             <td><input type="text" class="form-control" name="unit${i}" placeholder="單位"></td>
           </tr>`;
       }
@@ -93,26 +108,34 @@
       const configs = [];
       for (let i = 0; i < ioCount; i++) {
         configs.push({
-          pin: gpioMap[i],
           name: fd.get(`name${i}`) || `GPIO${gpioMap[i]}`,
           mode: fd.get(`mode${i}`),
           type: fd.get(`type${i}`),
           unit: fd.get(`unit${i}`) || ''
         });
       }
-      const payload = { configs };
+      const payload = {
+        type: 'config',
+        configs
+      };
       console.log('發送設定:', payload);
       client.publish('esp32/config', JSON.stringify(payload));
     });
 
     function renderControlTable(ioList = []) {
-      const tbody = document.getElementById('controlTableBody'); tbody.innerHTML = '';
+      const tbody = document.getElementById('controlTableBody');
+      tbody.innerHTML = '';
       ioList.forEach(io => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td>${io.pin}</td><td>${io.name}</td><td>${io.mode}</td>
+          <td>${io.pin}</td>
+          <td>${io.name}</td>
+          <td>${io.mode}</td>
           <td><span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span></td>
-          <td>${io.mode==='output'?`<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin},1)">ON</button><button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin},0)">OFF</button>`:'-'}</td>
+          <td>${io.mode === 'output'
+              ? `<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin}, 1)">ON</button>
+                 <button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin}, 0)">OFF</button>`
+              : '-'}</td>
           <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
         `;
         tbody.appendChild(tr);
