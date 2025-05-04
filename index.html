@@ -1,153 +1,74 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ESP32 控制面板</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
-  <style>
-    .status-led { width: 20px; height: 20px; border-radius: 50%; display: inline-block; }
-    .led-on  { background-color: red; }
-    .led-off { background-color: green; }
-  </style>
+  <meta charset="UTF-8">
+  <title>ESP32 GPIO 設定介面</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
-<body>
-  <div class="container mt-4">
-    <ul class="nav nav-tabs">
-      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#settings">設定</button></li>
-      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#control">控制</button></li>
-      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#logic">邏輯</button></li>
-    </ul>
-
-    <div class="tab-content mt-3">
-      <div class="tab-pane fade show active" id="settings">
-        <form id="settingsForm">
-          <table class="table table-bordered">
-            <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>控制類型</th><th>單位</th></tr></thead>
-            <tbody id="settingsTableBody"></tbody>
-          </table>
-          <button type="submit" class="btn btn-primary">儲存設定</button>
-        </form>
+<body class="p-4">
+  <div class="container">
+    <h2>ESP32 GPIO 設定</h2>
+    <form id="gpioForm">
+      <div class="row">
+        <!-- 產生 10 組 GPIO 選單 -->
+        <script>
+          const gpioList = ["GPIO12", "GPIO14", "GPIO27", "GPIO26", "GPIO25", "GPIO33", "GPIO32", "GPIO4", "GPIO5", "GPIO18"];
+          gpioList.forEach((gpio, index) => {
+            document.write(`
+              <div class="col-md-4 mb-3">
+                <label class="form-label">${gpio}</label>
+                <select class="form-select" name="${gpio}">
+                  <option value="input">Input</option>
+                  <option value="output">Output</option>
+                </select>
+              </div>
+            `);
+          });
+        </script>
       </div>
-
-      <div class="tab-pane fade" id="control">
-        <table class="table table-bordered">
-          <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態</th><th>操作</th><th>排程</th></tr></thead>
-          <tbody id="controlTableBody"></tbody>
-        </table>
-      </div>
-
-      <div class="tab-pane fade" id="logic">
-        <form id="logicForm">
-          <div class="mb-3">
-            <label class="form-label">邏輯條件</label>
-            <textarea id="logicRule" class="form-control" rows="5" placeholder="範例: 如果 GPIO1 = HIGH，則啟動 GPIO5"></textarea>
-          </div>
-          <button type="submit" class="btn btn-success">儲存邏輯</button>
-        </form>
-      </div>
-    </div>
+      <button type="submit" class="btn btn-primary">送出設定</button>
+    </form>
+    <hr>
+    <div class="alert alert-info mt-3" id="status">尚未連接 MQTT...</div>
   </div>
 
-  <!-- JS & MQTT -->
-  <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
   <script>
-    const ioCount = 10;
-    const gpioMap = [12,14,27,26,25,33,32,4,5,18];
-    const broker = 'broker.mqttgo.io';
-    const client = mqtt.connect(`wss://${broker}:8084/mqtt`);
+    // 初始化 MQTT 連線
+    const client = mqtt.connect("wss://broker.mqttgo.io:8084/mqtt");
 
-    client.on('connect', () => {
-      console.log('MQTT 連線成功');
-      client.subscribe('esp32/status');
-      client.subscribe('esp32/config/ack');
-      // 要求 ESP32 傳回狀態（例如開機時主動回傳）
-      client.publish('esp32/status/request', 'get');
+    client.on("connect", function () {
+      document.getElementById("status").textContent = "✅ 已連接 MQTT Broker";
     });
 
-    client.on('message', (topic, message) => {
-      console.log('收到主題', topic, '訊息', message.toString());
-      if (topic === 'esp32/status') {
-        const { io } = JSON.parse(message);
-        renderControlTable(io);
-      }
-      if (topic === 'esp32/config/ack') {
-        alert('ESP32 已套用設定');
-      }
+    client.on("error", function (err) {
+      document.getElementById("status").textContent = "❌ MQTT 連接錯誤: " + err.message;
     });
 
-    function renderSettingsTable() {
-      const tbody = document.getElementById('settingsTableBody');
-      tbody.innerHTML = '';
-      for (let i = 0; i < ioCount; i++) {
-        tbody.innerHTML += `
-          <tr>
-            <td>${i + 1}</td>
-            <td><input type="text" class="form-control" name="name${i}" placeholder="GPIO${gpioMap[i]}"></td>
-            <td>
-              <select class="form-select" name="mode${i}">
-                <option value="input">Input</option>
-                <option value="output">Output</option>
-              </select>
-            </td>
-            <td>
-              <select class="form-select" name="type${i}">
-                <option value="digital">數位</option>
-                <option value="analog">類比</option>
-              </select>
-            </td>
-            <td><input type="text" class="form-control" name="unit${i}" placeholder="單位"></td>
-          </tr>`;
-      }
-    }
-
-    document.getElementById('settingsForm').addEventListener('submit', e => {
+    // 當表單送出時
+    document.getElementById("gpioForm").addEventListener("submit", function (e) {
       e.preventDefault();
-      const fd = new FormData(e.target);
+
+      const formData = new FormData(e.target);
       const configs = [];
-      for (let i = 0; i < ioCount; i++) {
+
+      for (const [name, mode] of formData.entries()) {
         configs.push({
-          name: fd.get(`name${i}`) || `GPIO${gpioMap[i]}`,
-          mode: fd.get(`mode${i}`),
-          type: fd.get(`type${i}`),
-          unit: fd.get(`unit${i}`) || ''
+          name: name,
+          mode: mode,
+          type: "digital",
+          unit: ""
         });
       }
-      const payload = {
-        type: 'config',
-        configs
+
+      const message = {
+        type: "config",
+        configs: configs
       };
-      console.log('發送設定:', payload);
-      client.publish('esp32/config', JSON.stringify(payload));
+
+      client.publish("esp32/config", JSON.stringify(message));
+      document.getElementById("status").textContent = "🚀 設定已發送至 esp32/config";
     });
-
-    function renderControlTable(ioList = []) {
-      const tbody = document.getElementById('controlTableBody');
-      tbody.innerHTML = '';
-      ioList.forEach(io => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${io.pin}</td>
-          <td>${io.name}</td>
-          <td>${io.mode}</td>
-          <td><span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span></td>
-          <td>${io.mode === 'output'
-              ? `<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin}, 1)">ON</button>
-                 <button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin}, 0)">OFF</button>`
-              : '-'}</td>
-          <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function sendCmd(pin, state) {
-      console.log('發送控制:', pin, state);
-      client.publish('esp32/control', JSON.stringify({ pin, state }));
-    }
-
-    renderSettingsTable();
   </script>
 </body>
 </html>
