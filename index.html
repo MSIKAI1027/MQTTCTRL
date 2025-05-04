@@ -1,10 +1,11 @@
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ESP32 控制面板</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
   <style>
     .status-led {
       width: 20px;
@@ -12,158 +13,155 @@
       border-radius: 50%;
       display: inline-block;
     }
-    .led-on { background-color: red; }
+    .led-on  { background-color: red;   }
     .led-off { background-color: green; }
   </style>
 </head>
 <body>
-<div class="container mt-4">
-  <ul class="nav nav-tabs" id="mainTab" role="tablist">
-    <li class="nav-item" role="presentation">
-      <button class="nav-link active" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">設定</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="control-tab" data-bs-toggle="tab" data-bs-target="#control" type="button" role="tab">控制</button>
-    </li>
-    <li class="nav-item" role="presentation">
-      <button class="nav-link" id="logic-tab" data-bs-toggle="tab" data-bs-target="#logic" type="button" role="tab">邏輯</button>
-    </li>
-  </ul>
-  <div class="tab-content mt-3">
-    <!-- 設定頁面 -->
-    <div class="tab-pane fade show active" id="settings" role="tabpanel">
-      <form id="settingsForm">
+  <div class="container mt-4">
+    <ul class="nav nav-tabs" id="mainTab" role="tablist">
+      <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#settings">設定</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#control">控制</button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#logic">邏輯</button>
+      </li>
+    </ul>
+    <div class="tab-content mt-3">
+      <!-- 設定頁 -->
+      <div class="tab-pane fade show active" id="settings">
+        <form id="settingsForm">
+          <table class="table table-bordered">
+            <thead>
+              <tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>控制類型</th><th>單位</th></tr>
+            </thead>
+            <tbody id="settingsTableBody"></tbody>
+          </table>
+          <button type="submit" class="btn btn-primary">儲存設定</button>
+        </form>
+      </div>
+
+      <!-- 控制頁 -->
+      <div class="tab-pane fade" id="control">
         <table class="table table-bordered">
-          <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>控制類型</th><th>單位</th></tr></thead>
-          <tbody id="settingsTableBody"></tbody>
+          <thead>
+            <tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態</th><th>操作</th><th>排程</th></tr>
+          </thead>
+          <tbody id="controlTableBody"></tbody>
         </table>
-        <button type="submit" class="btn btn-primary">儲存設定</button>
-      </form>
-    </div>
-    <!-- 控制頁面 -->
-    <div class="tab-pane fade" id="control" role="tabpanel">
-      <table class="table table-bordered">
-        <thead><tr><th>#</th><th>GPIO 名稱</th><th>模式</th><th>狀態/控制</th><th>控制模式</th><th>排程</th></tr></thead>
-        <tbody id="controlTableBody"></tbody>
-      </table>
-    </div>
-    <!-- 邏輯頁面 -->
-    <div class="tab-pane fade" id="logic" role="tabpanel">
-      <form id="logicForm">
-        <div class="mb-3">
-          <label for="logicRule" class="form-label">邏輯條件 (範例: 如果 GPIO1 = HIGH，則啟動 GPIO5)</label>
-          <textarea id="logicRule" class="form-control" rows="5"></textarea>
-        </div>
-        <button type="submit" class="btn btn-success">儲存邏輯</button>
-      </form>
+      </div>
+
+      <!-- 邏輯頁 -->
+      <div class="tab-pane fade" id="logic">
+        <form id="logicForm">
+          <div class="mb-3">
+            <label class="form-label">邏輯條件</label>
+            <textarea id="logicRule" class="form-control" rows="5"
+              placeholder="範例: 如果 GPIO1 = HIGH，則啟動 GPIO5"></textarea>
+          </div>
+          <button type="submit" class="btn btn-success">儲存邏輯</button>
+        </form>
+      </div>
     </div>
   </div>
-</div>
 
-<script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  const ioCount = 10;
-  const gpioMap = [12, 14, 27, 26, 25, 33, 32, 4, 5, 18];
-  const mqttBroker = "broker.mqttgo.io";  // 使用的 MQTT Broker
+  <!-- 加入 crossorigin 屬性以配合預載需求，避免 preload 警告 -->
+  <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+  <script>
+    const ioCount  = 10;
+    const gpioMap  = [12,14,27,26,25,33,32,4,5,18];
+    const broker   = "broker.mqttgo.io";
+    const client   = mqtt.connect(`wss://${broker}:8084/mqtt`);
 
-  // 初始化 MQTT 客戶端
-  const client = mqtt.connect(`wss://${mqttBroker}:8083/mqtt`);
-
-  // 當 MQTT 連線成功
-  client.on('connect', function () {
-    console.log('MQTT 連線成功');
-    client.subscribe('esp32/status'); // 訂閱 ESP32 狀態主題
-  });
-
-  // 當接收到來自 ESP32 的訊息
-  client.on('message', function (topic, message) {
-    if (topic === 'esp32/status') {
-      const data = JSON.parse(message.toString());
-      renderControlTable(data.io);
-    }
-  });
-
-  // 渲染設定表格
-  function renderSettingsTable() {
-    const tbody = document.getElementById('settingsTableBody');
-    tbody.innerHTML = '';
-    for (let i = 0; i < ioCount; i++) {
-      tbody.innerHTML += `
-        <tr>
-          <td>${i + 1}</td>
-          <td>
-            <input type="text" class="form-control" name="gpioName${i}" placeholder="GPIO${gpioMap[i]}">
-          </td>
-          <td>
-            <select class="form-select" name="mode${i}" id="mode${i}" onchange="updateControlFields(${i})">
-              <option value="input">Input</option>
-              <option value="output">Output</option>
-            </select>
-          </td>
-          <td>
-            <select class="form-select" name="controlType${i}" id="controlType${i}">
-              <option value="digital">數位</option>
-              <option value="analog">類比</option>
-            </select>
-          </td>
-          <td>
-            <input type="text" class="form-control" name="unit${i}" id="unit${i}" placeholder="單位">
-          </td>
-        </tr>
-      `;
-    }
-  }
-
-  // 渲染控制表格
-  function renderControlTable(ioList = []) {
-    if (!Array.isArray(ioList)) {
-      console.warn("MQTT 資料格式錯誤，缺少 'io' 陣列", ioList);
-      return;
-    }
-
-    const tbody = document.getElementById('controlTableBody');
-    tbody.innerHTML = '';
-    ioList.forEach(io => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${io.pin}</td>
-        <td>${io.name}</td>
-        <td>${io.mode}</td>
-        <td><span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span></td>
-        <td>
-          ${io.mode === "output" ? `
-            <button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin},1)">ON</button>
-            <button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin},0)">OFF</button>
-          ` : '-'}
-        </td>
-        <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
-      `;
-      tbody.appendChild(row);
+    client.on('connect', () => {
+      console.log('MQTT 連線成功');
+      client.subscribe('esp32/status');
     });
-  }
 
-  // 控制命令發送
-  function sendCmd(pin, state) {
-    const msg = JSON.stringify({ pin: pin, state: state });
-    client.publish('esp32/cmd', msg);  // 發送控制指令
-  }
+    client.on('message', (topic, message) => {
+      if (topic === 'esp32/status') {
+        const { io } = JSON.parse(message.toString());
+        renderControlTable(io);
+      }
+    });
 
-  // 更新控制項
-  function updateControlFields(index) {
-    const mode = document.getElementById(`mode${index}`).value;
-    const controlTypeSelect = document.getElementById(`controlType${index}`);
-    const unitInput = document.getElementById(`unit${index}`);
-    const isInput = mode === 'input';
-    controlTypeSelect.disabled = !isInput;
-    unitInput.disabled = !isInput;
-    if (!isInput) {
-      controlTypeSelect.value = '';
-      unitInput.value = '';
+    // Render 設定表
+    function renderSettingsTable() {
+      const tbody = document.getElementById('settingsTableBody');
+      tbody.innerHTML = '';
+      for (let i = 0; i < ioCount; i++) {
+        tbody.innerHTML += `
+          <tr>
+            <td>${i+1}</td>
+            <td><input type="text" class="form-control" name="gpioName${i}" placeholder="GPIO${gpioMap[i]}"></td>
+            <td>
+              <select class="form-select" name="mode${i}" id="mode${i}"
+                onchange="updateControlFields(${i})">
+                <option value="input">Input</option>
+                <option value="output">Output</option>
+              </select>
+            </td>
+            <td>
+              <select class="form-select" name="controlType${i}" id="controlType${i}">
+                <option value="digital">數位</option>
+                <option value="analog">類比</option>
+              </select>
+            </td>
+            <td><input type="text" class="form-control" name="unit${i}" id="unit${i}" placeholder="單位"></td>
+          </tr>`;
+      }
     }
-  }
 
-  renderSettingsTable();
-</script>
+    // Render 控制表
+    function renderControlTable(ioList = []) {
+      const tbody = document.getElementById('controlTableBody');
+      tbody.innerHTML = '';
+      ioList.forEach(io => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${io.pin}</td>
+          <td>${io.name}</td>
+          <td>${io.mode}</td>
+          <td>
+            <span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span>
+          </td>
+          <td>
+            ${io.mode === 'output'
+              ? `<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin},1)">ON</button>
+                 <button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin},0)">OFF</button>`
+              : '-'}
+          </td>
+          <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 發送控制指令
+    function sendCmd(pin, state) {
+      const msg = JSON.stringify({ pin: pin, state: state });
+      client.publish('esp32/control', msg);
+    }
+
+    // 根據模式啟用/停用設定欄位
+    function updateControlFields(i) {
+      const mode = document.getElementById(`mode${i}`).value;
+      const ctl  = document.getElementById(`controlType${i}`);
+      const unit = document.getElementById(`unit${i}`);
+      const isInput = mode === 'input';
+      ctl.disabled  = !isInput;
+      unit.disabled = !isInput;
+      if (!isInput) {
+        ctl.value = '';
+        unit.value = '';
+      }
+    }
+
+    renderSettingsTable();
+  </script>
 </body>
 </html>
