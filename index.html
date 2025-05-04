@@ -1,51 +1,91 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <title>ESP32 GPIO 控制</title>
+  <meta charset="UTF-8" />
+  <title>ESP32 GPIO 設定</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
 </head>
-<body>
-  <h2>MQTT 控制測試</h2>
-  <button onclick="sendGpioConfig()">發送 GPIO JSON</button>
-  <pre id="log">等待中...</pre>
+<body class="p-4">
+  <h3>ESP32 GPIO 控制介面</h3>
+  <form id="gpioForm" class="table-responsive">
+    <table class="table table-bordered align-middle text-center">
+      <thead>
+        <tr>
+          <th>GPIO</th>
+          <th>模式</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- 動態產生 10 列 -->
+        <script>
+          for (let i = 0; i < 10; i++) {
+            document.write(`
+              <tr>
+                <td><input type="number" class="form-control" name="pin${i}" min="0" max="39" required></td>
+                <td>
+                  <select class="form-select" name="mode${i}" onchange="toggleState(this, ${i})">
+                    <option value="output">output</option>
+                    <option value="input">input</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="form-select" name="state${i}" id="state${i}">
+                    <option value="high">high</option>
+                    <option value="low">low</option>
+                  </select>
+                </td>
+              </tr>
+            `);
+          }
+        </script>
+      </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary">送出設定</button>
+  </form>
+
+  <pre class="mt-4" id="log">連線中...</pre>
 
   <script>
-    const client = mqtt.connect('wss://broker.mqttgo.io:8084/mqtt', {
-      clean: true,
-      clientId: 'webclient_' + Math.random().toString(16).substr(2, 8),
-      protocolVersion: 4,
-      reconnectPeriod: 1000
-    });
-
+    const client = mqtt.connect("wss://broker.mqttgo.io:8084/mqtt");
     const log = (msg) => {
-      document.getElementById('log').textContent += `\n${msg}`;
+      document.getElementById("log").textContent += `\n${msg}`;
     };
 
-    client.on('connect', () => {
-      log('✅ 已連線到 MQTT broker');
-      client.subscribe('esp32/gpio_status', () => {
-        log('📥 已訂閱主題 esp32/gpio_status');
+    client.on("connect", () => {
+      log("✅ 已連線 MQTT broker");
+      client.subscribe("esp32/gpio_status", () => {
+        log("📥 訂閱 esp32/gpio_status");
       });
     });
 
-    client.on('message', (topic, message) => {
-      log(`📨 ${topic}：${message}`);
+    client.on("message", (topic, message) => {
+      log(`📨 ${topic}: ${message}`);
     });
 
-    client.on('error', (err) => {
-      log(`❌ 連線錯誤：${err}`);
+    document.getElementById("gpioForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const data = { gpio: [] };
+      for (let i = 0; i < 10; i++) {
+        const pin = form[`pin${i}`].value;
+        const mode = form[`mode${i}`].value;
+        const state = form[`state${i}`].value;
+        if (pin !== "") {
+          const item = { pin: Number(pin), mode: mode };
+          if (mode === "output") item.state = state;
+          data.gpio.push(item);
+        }
+      }
+      const payload = JSON.stringify(data);
+      client.publish("esp32/gpio_control", payload);
+      log(`📤 發送 JSON:\n${payload}`);
     });
 
-    function sendGpioConfig() {
-      const payload = {
-        gpio: [
-          { pin: 0, mode: 'output', state: 'high' },
-          { pin: 1, mode: 'output', state: 'low' }
-        ]
-      };
-      client.publish('esp32/gpio_control', JSON.stringify(payload));
-      log(`📤 已發送 JSON: ${JSON.stringify(payload)}`);
+    function toggleState(selectEl, index) {
+      const stateEl = document.getElementById("state" + index);
+      stateEl.disabled = (selectEl.value === "input");
     }
   </script>
 </body>
