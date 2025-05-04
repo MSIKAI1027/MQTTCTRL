@@ -68,7 +68,6 @@
     </div>
   </div>
 
-  <!-- 加入 crossorigin 屬性以配合預載需求，避免 preload 警告 -->
   <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
   <script>
@@ -89,6 +88,22 @@
       }
     });
 
+    // 當設定表單提交時，攔截預設行為並發送設定
+    document.getElementById('settingsForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const configs = [];
+      for (let i = 0; i < ioCount; i++) {
+        const name = this[`gpioName${i}`].value || `GPIO${gpioMap[i]}`;
+        const mode = this[`mode${i}`].value;
+        const type = this[`controlType${i}`].value;
+        const unit = this[`unit${i}`].value;
+        configs.push({ pin: gpioMap[i], name, mode, type, unit });
+      }
+      // 發送到 esp32/config 主題
+      client.publish('esp32/config', JSON.stringify({ configs }));
+      alert('設定已發送！');
+    });
+
     // Render 設定表
     function renderSettingsTable() {
       const tbody = document.getElementById('settingsTableBody');
@@ -99,8 +114,7 @@
             <td>${i+1}</td>
             <td><input type="text" class="form-control" name="gpioName${i}" placeholder="GPIO${gpioMap[i]}"></td>
             <td>
-              <select class="form-select" name="mode${i}" id="mode${i}"
-                onchange="updateControlFields(${i})">
+              <select class="form-select" name="mode${i}" id="mode${i}" onchange="updateControlFields(${i})">
                 <option value="input">Input</option>
                 <option value="output">Output</option>
               </select>
@@ -126,15 +140,11 @@
           <td>${io.pin}</td>
           <td>${io.name}</td>
           <td>${io.mode}</td>
-          <td>
-            <span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span>
-          </td>
-          <td>
-            ${io.mode === 'output'
+          <td><span class="status-led ${io.value ? 'led-on' : 'led-off'}"></span></td>
+          <td>${io.mode==='output'
               ? `<button class="btn btn-sm btn-primary" onclick="sendCmd(${io.pin},1)">ON</button>
                  <button class="btn btn-sm btn-secondary" onclick="sendCmd(${io.pin},0)">OFF</button>`
-              : '-'}
-          </td>
+              : '-'}</td>
           <td><button class="btn btn-outline-primary btn-sm">設定排程</button></td>
         `;
         tbody.appendChild(tr);
@@ -143,8 +153,7 @@
 
     // 發送控制指令
     function sendCmd(pin, state) {
-      const msg = JSON.stringify({ pin: pin, state: state });
-      client.publish('esp32/control', msg);
+      client.publish('esp32/control', JSON.stringify({ pin, state }));
     }
 
     // 根據模式啟用/停用設定欄位
@@ -155,10 +164,7 @@
       const isInput = mode === 'input';
       ctl.disabled  = !isInput;
       unit.disabled = !isInput;
-      if (!isInput) {
-        ctl.value = '';
-        unit.value = '';
-      }
+      if (!isInput) { ctl.value=''; unit.value=''; }
     }
 
     renderSettingsTable();
