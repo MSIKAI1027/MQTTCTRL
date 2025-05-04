@@ -2,49 +2,50 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>MQTT JSON Web Client</title>
+  <title>ESP32 GPIO 控制</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 <body>
-  <h2>MQTT JSON Web Client</h2>
-  <button onclick="publishJson()">送出 JSON 控制訊息</button>
-  <div id="status">尚未連線</div>
-  <div id="message">接收到的訊息：</div>
+  <h2>MQTT 控制測試</h2>
+  <button onclick="sendGpioConfig()">發送 GPIO JSON</button>
+  <pre id="log">等待中...</pre>
 
   <script>
-    const client = mqtt.connect('wss://broker.mqttgo.io:8084/mqtt');
+    const client = mqtt.connect('wss://broker.mqttgo.io:8084/mqtt', {
+      clean: true,
+      clientId: 'webclient_' + Math.random().toString(16).substr(2, 8),
+      protocolVersion: 4,
+      reconnectPeriod: 1000
+    });
+
+    const log = (msg) => {
+      document.getElementById('log').textContent += `\n${msg}`;
+    };
 
     client.on('connect', () => {
-      document.getElementById('status').innerText = '✅ 已連線到 MQTT Broker';
-
-      // 訂閱主題
-      client.subscribe('esp32/status', (err) => {
-        if (!err) {
-          console.log('已訂閱 esp32/status');
-        }
+      log('✅ 已連線到 MQTT broker');
+      client.subscribe('esp32/gpio_status', () => {
+        log('📥 已訂閱主題 esp32/gpio_status');
       });
     });
 
     client.on('message', (topic, message) => {
-      try {
-        const jsonData = JSON.parse(message.toString());
-        console.log(`收到 JSON [${topic}]:`, jsonData);
-
-        // 顯示內容
-        document.getElementById('message').innerText = `接收到的訊息：${JSON.stringify(jsonData, null, 2)}`;
-      } catch (e) {
-        console.error('解析 JSON 失敗：', e);
-      }
+      log(`📨 ${topic}：${message}`);
     });
 
-    function publishJson() {
-      const payload = {
-        command: 'toggle',
-        target: 'relay1',
-        timestamp: Date.now()
-      };
+    client.on('error', (err) => {
+      log(`❌ 連線錯誤：${err}`);
+    });
 
-      client.publish('esp32/control', JSON.stringify(payload));
+    function sendGpioConfig() {
+      const payload = {
+        gpio: [
+          { pin: 0, mode: 'output', state: 'high' },
+          { pin: 1, mode: 'output', state: 'low' }
+        ]
+      };
+      client.publish('esp32/gpio_control', JSON.stringify(payload));
+      log(`📤 已發送 JSON: ${JSON.stringify(payload)}`);
     }
   </script>
 </body>
