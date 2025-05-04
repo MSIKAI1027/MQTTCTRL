@@ -18,12 +18,17 @@
         </tr>
       </thead>
       <tbody>
-        <!-- 動態產生 10 列 -->
+        <!-- 動態產生 10 列 GPIO 設定 -->
         <script>
+          const validPins = [2, 4, 5, 12, 13, 14, 15, 16, 17, 18];
           for (let i = 0; i < 10; i++) {
             document.write(`
               <tr>
-                <td><input type="number" class="form-control" name="pin${i}" min="0" max="39" required></td>
+                <td>
+                  <select class="form-select" name="pin${i}">
+                    ${validPins.map(pin => `<option value="${pin}">GPIO ${pin}</option>`).join("")}
+                  </select>
+                </td>
                 <td>
                   <select class="form-select" name="mode${i}" onchange="toggleState(this, ${i})">
                     <option value="output">output</option>
