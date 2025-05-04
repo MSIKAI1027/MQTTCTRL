@@ -1,70 +1,146 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <title>ESP32 GPIO 設定介面</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <title>ESP32 I/O 控制介面</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    .io-card { min-width: 150px; }
+  </style>
 </head>
 <body class="p-4">
   <div class="container">
-    <h2>ESP32 GPIO 設定</h2>
-    <form id="gpioForm">
-      <div class="row" id="gpioControls"></div>
-      <button type="submit" class="btn btn-primary mt-3">送出設定</button>
-    </form>
-    <hr>
-    <div class="alert alert-info mt-3" id="status">尚未連接 MQTT...</div>
+    <h2 class="mb-4">ESP32 I/O 控制系統</h2>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="tabMenu" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#settingsTab">設定</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#controlTab">控制</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#statusTab">狀態</button></li>
+    </ul>
+
+    <div class="tab-content mt-3">
+      <!-- 設定 Tab -->
+      <div class="tab-pane fade show active" id="settingsTab">
+        <div class="row" id="settingsContainer"></div>
+        <button class="btn btn-primary mt-3" onclick="saveConfig()">儲存設定</button>
+      </div>
+
+      <!-- 控制 Tab -->
+      <div class="tab-pane fade" id="controlTab">
+        <div class="row" id="controlContainer"></div>
+      </div>
+
+      <!-- 狀態 Tab -->
+      <div class="tab-pane fade" id="statusTab">
+        <div class="row" id="statusContainer"></div>
+        <button class="btn btn-secondary mt-3" onclick="requestStatus()">更新狀態</button>
+      </div>
+    </div>
   </div>
 
   <script>
-    const gpioList = ["GPIO12", "GPIO14", "GPIO27", "GPIO26", "GPIO25", "GPIO33", "GPIO32", "GPIO4", "GPIO5", "GPIO18"];
-    const gpioContainer = document.getElementById("gpioControls");
+    const client = mqtt.connect('wss://broker.mqttgo.io:8084/mqtt');
+    const deviceTopic = 'esp32/io/';
+    const ioCount = 10;
+    let config = [];
 
-    gpioList.forEach(gpio => {
-      gpioContainer.innerHTML += `
-        <div class="col-md-4 mb-3">
-          <label class="form-label">${gpio}</label>
-          <select class="form-select" name="${gpio}" id="${gpio}">
-            <option value="input">Input</option>
-            <option value="output">Output</option>
-          </select>
-        </div>`;
+    client.on('connect', () => {
+      console.log('已連線 MQTT');
+      client.subscribe(deviceTopic + 'status');
+      requestConfig();
     });
 
-    const client = mqtt.connect("wss://broker.mqttgo.io:8084/mqtt");
-
-    client.on("connect", () => {
-      document.getElementById("status").textContent = "已連接 MQTT Broker";
-      client.subscribe("esp32/config/response");
-      client.publish("esp32/config/request", "get");
-    });
-
-    client.on("message", (topic, message) => {
-      if (topic === "esp32/config/response") {
-        const data = JSON.parse(message.toString());
-        data.configs.forEach(cfg => {
-          if (document.getElementById(cfg.name)) {
-            document.getElementById(cfg.name).value = cfg.mode;
-          }
-        });
-        document.getElementById("status").textContent = "設定已同步";
+    client.on('message', (topic, message) => {
+      const payload = JSON.parse(message.toString());
+      if (topic.endsWith('status')) updateStatus(payload);
+      if (topic.endsWith('config')) {
+        config = payload.io;
+        renderSettings();
+        renderControl();
+        renderStatus();
       }
     });
 
-    document.getElementById("gpioForm").addEventListener("submit", function (e) {
-      e.preventDefault();
-      const formData = new FormData(e.target);
-      const configs = [];
+    function requestConfig() {
+      client.publish(deviceTopic + 'get_config', '');
+    }
 
-      for (const [name, mode] of formData.entries()) {
-        configs.push({ name, mode, type: "digital", unit: "" });
-      }
+    function requestStatus() {
+      client.publish(deviceTopic + 'get_status', '');
+    }
 
-      const payload = { type: "config", configs };
-      client.publish("esp32/config", JSON.stringify(payload));
-      document.getElementById("status").textContent = "設定已送出";
-    });
+    function renderSettings() {
+      const container = document.getElementById('settingsContainer');
+      container.innerHTML = '';
+      config.forEach((item, index) => {
+        container.innerHTML += `
+          <div class="col-md-3">
+            <div class="card io-card mb-3">
+              <div class="card-body">
+                <h6>GPIO ${item.pin}</h6>
+                <select class="form-select" onchange="config[${index}].mode=this.value">
+                  <option value="input" ${item.mode === 'input' ? 'selected' : ''}>輸入</option>
+                  <option value="output" ${item.mode === 'output' ? 'selected' : ''}>輸出</option>
+                </select>
+              </div>
+            </div>
+          </div>`;
+      });
+    }
+
+    function renderControl() {
+      const container = document.getElementById('controlContainer');
+      container.innerHTML = '';
+      config.forEach(item => {
+        if (item.mode === 'output') {
+          container.innerHTML += `
+            <div class="col-md-3">
+              <div class="card io-card mb-3">
+                <div class="card-body">
+                  <h6>GPIO ${item.pin}</h6>
+                  <button class="btn btn-outline-success w-100" onclick="toggleOutput(${item.pin}, 1)">ON</button>
+                  <button class="btn btn-outline-danger w-100 mt-2" onclick="toggleOutput(${item.pin}, 0)">OFF</button>
+                </div>
+              </div>
+            </div>`;
+        }
+      });
+    }
+
+    function renderStatus() {
+      const container = document.getElementById('statusContainer');
+      container.innerHTML = '';
+      config.forEach(item => {
+        container.innerHTML += `
+          <div class="col-md-3">
+            <div class="card io-card mb-3">
+              <div class="card-body">
+                <h6>GPIO ${item.pin}</h6>
+                <span class="badge ${item.state ? 'bg-success' : 'bg-secondary'}">${item.state ? 'HIGH' : 'LOW'}</span>
+              </div>
+            </div>
+          </div>`;
+      });
+    }
+
+    function toggleOutput(pin, state) {
+      client.publish(deviceTopic + 'control', JSON.stringify({ pin, state }));
+    }
+
+    function saveConfig() {
+      client.publish(deviceTopic + 'config', JSON.stringify({ io: config }));
+      alert("設定已傳送！");
+    }
+
+    function updateStatus(statusPayload) {
+      config = config.map((item, i) => {
+        item.state = statusPayload.io[i].state;
+        return item;
+      });
+      renderStatus();
+    }
   </script>
 </body>
 </html>
