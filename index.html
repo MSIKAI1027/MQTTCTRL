@@ -2,36 +2,59 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>MQTT Web Control</title>
+  <title>MQTT GPIO Control</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 <body>
-  <h2>MQTT Web Client</h2>
-  <button onclick="publishMessage()">送出控制訊息</button>
+  <h2>ESP32 GPIO 控制</h2>
+  <button onclick="publishGpioConfig()">傳送 GPIO 配置</button>
   <div id="status">尚未連線</div>
+  <div id="message">接收到的訊息：</div>
 
   <script>
-    // 連接到 MQTT broker（需支援 WebSocket）
     const client = mqtt.connect('wss://broker.mqttgo.io:8084/mqtt');
 
     client.on('connect', () => {
       document.getElementById('status').innerText = '✅ 已連線到 MQTT Broker';
 
       // 訂閱主題
-      client.subscribe('esp32/status', (err) => {
+      client.subscribe('esp32/gpio_status', (err) => {
         if (!err) {
-          console.log('已訂閱 esp32/status');
+          console.log('已訂閱 esp32/gpio_status');
         }
       });
     });
 
     client.on('message', (topic, message) => {
-      console.log(`收到訊息 [${topic}]: ${message.toString()}`);
-      // 可依需求更新畫面
+      try {
+        const jsonData = JSON.parse(message.toString());
+        console.log(`收到 JSON [${topic}]:`, jsonData);
+
+        // 顯示內容
+        document.getElementById('message').innerText = `接收到的訊息：${JSON.stringify(jsonData, null, 2)}`;
+      } catch (e) {
+        console.error('解析 JSON 失敗：', e);
+      }
     });
 
-    function publishMessage() {
-      client.publish('esp32/control', 'toggle');
+    function publishGpioConfig() {
+      const gpioConfig = {
+        gpio: [
+          { "pin": 0, "mode": "input", "state": "high" },
+          { "pin": 1, "mode": "output", "state": "low" },
+          { "pin": 2, "mode": "input", "state": "high" },
+          { "pin": 3, "mode": "output", "state": "high" },
+          { "pin": 4, "mode": "output", "state": "low" },
+          { "pin": 5, "mode": "input", "state": "low" },
+          { "pin": 6, "mode": "input", "state": "high" },
+          { "pin": 7, "mode": "output", "state": "high" },
+          { "pin": 8, "mode": "input", "state": "low" },
+          { "pin": 9, "mode": "output", "state": "high" }
+        ]
+      };
+
+      // 將 GPIO 配置作為 JSON 字串發送
+      client.publish('esp32/gpio_control', JSON.stringify(gpioConfig));
     }
   </script>
 </body>
