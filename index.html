@@ -2,12 +2,12 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>MQTT GPIO Control</title>
+  <title>MQTT JSON Web Client</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 <body>
-  <h2>ESP32 GPIO 控制</h2>
-  <button onclick="publishGpioConfig()">傳送 GPIO 配置</button>
+  <h2>MQTT JSON Web Client</h2>
+  <button onclick="publishJson()">送出 JSON 控制訊息</button>
   <div id="status">尚未連線</div>
   <div id="message">接收到的訊息：</div>
 
@@ -18,9 +18,9 @@
       document.getElementById('status').innerText = '✅ 已連線到 MQTT Broker';
 
       // 訂閱主題
-      client.subscribe('esp32/gpio_status', (err) => {
+      client.subscribe('esp32/status', (err) => {
         if (!err) {
-          console.log('已訂閱 esp32/gpio_status');
+          console.log('已訂閱 esp32/status');
         }
       });
     });
@@ -37,24 +37,14 @@
       }
     });
 
-    function publishGpioConfig() {
-      const gpioConfig = {
-        gpio: [
-          { "pin": 0, "mode": "input", "state": "high" },
-          { "pin": 1, "mode": "output", "state": "low" },
-          { "pin": 2, "mode": "input", "state": "high" },
-          { "pin": 3, "mode": "output", "state": "high" },
-          { "pin": 4, "mode": "output", "state": "low" },
-          { "pin": 5, "mode": "input", "state": "low" },
-          { "pin": 6, "mode": "input", "state": "high" },
-          { "pin": 7, "mode": "output", "state": "high" },
-          { "pin": 8, "mode": "input", "state": "low" },
-          { "pin": 9, "mode": "output", "state": "high" }
-        ]
+    function publishJson() {
+      const payload = {
+        command: 'toggle',
+        target: 'relay1',
+        timestamp: Date.now()
       };
 
-      // 將 GPIO 配置作為 JSON 字串發送
-      client.publish('esp32/gpio_control', JSON.stringify(gpioConfig));
+      client.publish('esp32/control', JSON.stringify(payload));
     }
   </script>
 </body>
